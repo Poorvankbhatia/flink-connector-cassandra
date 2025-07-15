@@ -71,6 +71,17 @@ public final class PrimitiveFieldMappers {
         public Object extractFromRow(Row row, String fieldName) {
             return row.isNull(fieldName) ? null : row.getInt(fieldName);
         }
+
+        @Override
+        public Object convertValue(Object value) {
+            if (value == null) {
+                return null;
+            }
+            if (value instanceof Number) {
+                return ((Number) value).intValue();
+            }
+            return value;
+        }
     }
 
     /** Long field mapper. */
@@ -78,6 +89,17 @@ public final class PrimitiveFieldMappers {
         @Override
         public Object extractFromRow(Row row, String fieldName) {
             return row.isNull(fieldName) ? null : row.getLong(fieldName);
+        }
+
+        @Override
+        public Object convertValue(Object value) {
+            if (value == null) {
+                return null;
+            }
+            if (value instanceof Number) {
+                return ((Number) value).longValue();
+            }
+            return value;
         }
     }
 
@@ -97,15 +119,28 @@ public final class PrimitiveFieldMappers {
         }
     }
 
-    /** String field mapper that handles text, uuid, and timeuuid types. */
+    /** String field mapper that handles text, uuid, timeuuid, and inet types. */
     public static final class StringMapper implements CassandraFieldMapper {
         @Override
         public Object extractFromRow(Row row, String fieldName) {
             if (row.isNull(fieldName)) {
                 return null;
             }
-            // Use getString() which handles text, uuid, and timeuuid uniformly
-            return convertValue(row.getString(fieldName));
+            String columnType = row.getColumnDefinitions().getType(fieldName).getName().toString();
+
+            switch (columnType) {
+                case "inet":
+                    InetAddress inet = row.getInet(fieldName);
+                    return StringData.fromString(inet.getHostAddress());
+                case "duration":
+                    Duration duration = row.get(fieldName, Duration.class);
+                    return StringData.fromString(duration.toString());
+                case "uuid":
+                case "timeuuid":
+                    return StringData.fromString(row.getUUID(fieldName).toString());
+                default:
+                    return convertValue(row.getString(fieldName));
+            }
         }
 
         @Override
@@ -117,7 +152,17 @@ public final class PrimitiveFieldMappers {
         }
     }
 
-    /** Decimal field mapper with precision and scale handling. */
+    /**
+     * Decimal field mapper for Cassandra DECIMAL type.
+     *
+     * <p>Handles precision and scale constraints according to Flink's DecimalType limits:
+     *
+     * <ul>
+     *   <li>Precision: 1-38 (inclusive)
+     *   <li>Scale: 0 to precision (inclusive)
+     *   <li>Default precision: 10, default scale: 0
+     * </ul>
+     */
     public static final class DecimalMapper implements CassandraFieldMapper {
         private final DecimalType decimalType;
 
@@ -166,6 +211,31 @@ public final class PrimitiveFieldMappers {
         }
     }
 
+    /** Time field mapper that handles Cassandra time to Flink TIME conversion. */
+    public static final class TimeMapper implements CassandraFieldMapper {
+        @Override
+        public Object extractFromRow(Row row, String fieldName) {
+            if (row.isNull(fieldName)) {
+                return null;
+            }
+            return convertValue(row.getTime(fieldName));
+        }
+
+        @Override
+        public Object convertValue(Object value) {
+            if (value == null) {
+                return null;
+            }
+            // Cassandra time is nanoseconds since midnight (long)
+            // Flink TIME is milliseconds since midnight (int)
+            if (value instanceof Long) {
+                long nanoseconds = (Long) value;
+                return (int) (nanoseconds / 1_000_000); // Convert nanoseconds to milliseconds
+            }
+            return value;
+        }
+    }
+
     /** Timestamp field mapper that handles various timestamp formats. */
     public static final class TimestampMapper implements CassandraFieldMapper {
         @Override
@@ -211,7 +281,7 @@ public final class PrimitiveFieldMappers {
                 buffer.get(bytes);
                 return bytes;
             }
-            return (byte[]) value;
+            return value;
         }
     }
 
@@ -242,51 +312,64 @@ public final class PrimitiveFieldMappers {
         }
     }
 
-    /** Inet field mapper that handles Cassandra inet (InetAddress) types. */
-    public static final class InetMapper implements CassandraFieldMapper {
+    /**
+     * Dynamic decimal mapper that handles both Cassandra DECIMAL and VARINT types mapping to Flink
+     * DECIMAL.
+     *
+     * <p>This mapper is needed because both Cassandra data types can be mapped to Flink's DECIMAL
+     * type:
+     *
+     * <ul>
+     *   <li><b>Cassandra DECIMAL</b> (BigDecimal) → Flink DECIMAL: Direct conversion with existing
+     *       scale
+     *   <li><b>Cassandra VARINT</b> (BigInteger) → Flink DECIMAL: Integer converted to decimal
+     *       format
+     * </ul>
+     *
+     * <p>The mapper determines the actual Cassandra column type at runtime and delegates to the
+     * appropriate mapper. Scale conversion is handled automatically by {@link
+     * org.apache.flink.table.data.DecimalData#fromBigDecimal}:
+     *
+     * <ul>
+     *   <li>VARINT 12345 → DECIMAL(10,2) becomes 12345.00
+     *   <li>DECIMAL 123.45 → DECIMAL(10,2) becomes 123.45
+     * </ul>
+     */
+    public static final class DynamicDecimalMapper implements CassandraFieldMapper {
+        private final DecimalMapper decimalMapper;
+        private final VarintMapper varintMapper;
+
+        public DynamicDecimalMapper(DecimalType decimalType) {
+            this.decimalMapper = new DecimalMapper(decimalType);
+            this.varintMapper = new VarintMapper(decimalType);
+        }
+
         @Override
         public Object extractFromRow(Row row, String fieldName) {
             if (row.isNull(fieldName)) {
                 return null;
             }
-            return convertValue(row.getInet(fieldName));
+
+            // Determine the actual Cassandra column type at runtime
+            String cassandraType =
+                    row.getColumnDefinitions().getType(fieldName).getName().toString();
+
+            switch (cassandraType.toLowerCase()) {
+                case "varint":
+                    return varintMapper.extractFromRow(row, fieldName);
+                case "decimal":
+                default:
+                    return decimalMapper.extractFromRow(row, fieldName);
+            }
         }
 
         @Override
         public Object convertValue(Object value) {
-            if (value == null) {
-                return null;
+            if (value instanceof BigInteger) {
+                return varintMapper.convertValue(value);
+            } else {
+                return decimalMapper.convertValue(value);
             }
-            InetAddress inet = (InetAddress) value;
-            return StringData.fromString(inet.getHostAddress());
-        }
-    }
-
-    /** Duration field mapper that handles Cassandra duration types. */
-    public static final class DurationMapper implements CassandraFieldMapper {
-        @Override
-        public Object extractFromRow(Row row, String fieldName) {
-            if (row.isNull(fieldName)) {
-                return null;
-            }
-            return convertValue(row.get(fieldName, Duration.class));
-        }
-
-        @Override
-        public Object convertValue(Object value) {
-            if (value == null) {
-                return null;
-            }
-            Duration duration = (Duration) value;
-            return StringData.fromString(duration.toString());
-        }
-    }
-
-    /** Generic field mapper for unsupported types. */
-    public static final class GenericMapper implements CassandraFieldMapper {
-        @Override
-        public Object extractFromRow(Row row, String fieldName) {
-            return row.isNull(fieldName) ? null : row.getObject(fieldName);
         }
     }
 }

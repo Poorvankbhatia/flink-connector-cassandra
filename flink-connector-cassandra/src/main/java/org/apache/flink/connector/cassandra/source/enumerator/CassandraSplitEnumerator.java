@@ -71,16 +71,8 @@ public final class CassandraSplitEnumerator
         enumeratorContext.callAsync(
                 this::prepareSplits,
                 (preparedState, throwable) -> {
-                    if (throwable != null) {
-                        LOG.error("Failed to prepare splits", throwable);
-                        throw new RuntimeException("Failed to prepare splits", throwable);
-                    }
-                    if (preparedState != null) {
-                        LOG.debug(
-                                "Initialized CassandraEnumeratorState: {}",
-                                preparedState.toString());
-                        state = preparedState;
-                    }
+                    LOG.debug("Initialized CassandraEnumeratorState: {}", preparedState.toString());
+                    state = preparedState;
                 });
     }
 

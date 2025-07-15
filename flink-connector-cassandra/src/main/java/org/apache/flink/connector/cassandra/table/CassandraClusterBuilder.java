@@ -44,6 +44,11 @@ public class CassandraClusterBuilder extends ClusterBuilder {
     private final long connectTimeoutMs;
     private final long readTimeoutMs;
 
+    /** Default constructor with sensible defaults for local development. */
+    public CassandraClusterBuilder() {
+        this("127.0.0.1", 9042, "cassandra", "cassandra", "LOCAL_ONE", 5000L, 12000L);
+    }
+
     public CassandraClusterBuilder(
             String hosts,
             int port,
@@ -66,6 +71,7 @@ public class CassandraClusterBuilder extends ClusterBuilder {
         configureHosts(builder, hosts);
 
         return builder.withCredentials(username, password)
+                .withPort(port)
                 .withQueryOptions(createQueryOptions())
                 .withSocketOptions(createSocketOptions())
                 .build();

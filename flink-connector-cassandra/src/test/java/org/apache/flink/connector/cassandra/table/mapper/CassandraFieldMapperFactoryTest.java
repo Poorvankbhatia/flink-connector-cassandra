@@ -22,89 +22,89 @@ import org.apache.flink.table.types.logical.ArrayType;
 import org.apache.flink.table.types.logical.BigIntType;
 import org.apache.flink.table.types.logical.BinaryType;
 import org.apache.flink.table.types.logical.BooleanType;
+import org.apache.flink.table.types.logical.CharType;
 import org.apache.flink.table.types.logical.DateType;
+import org.apache.flink.table.types.logical.DayTimeIntervalType;
 import org.apache.flink.table.types.logical.DecimalType;
 import org.apache.flink.table.types.logical.DoubleType;
 import org.apache.flink.table.types.logical.FloatType;
 import org.apache.flink.table.types.logical.IntType;
+import org.apache.flink.table.types.logical.LocalZonedTimestampType;
 import org.apache.flink.table.types.logical.LogicalType;
 import org.apache.flink.table.types.logical.MapType;
 import org.apache.flink.table.types.logical.MultisetType;
 import org.apache.flink.table.types.logical.RowType;
 import org.apache.flink.table.types.logical.SmallIntType;
+import org.apache.flink.table.types.logical.TimeType;
 import org.apache.flink.table.types.logical.TimestampType;
 import org.apache.flink.table.types.logical.TinyIntType;
 import org.apache.flink.table.types.logical.VarBinaryType;
 import org.apache.flink.table.types.logical.VarCharType;
+import org.apache.flink.table.types.logical.YearMonthIntervalType;
+import org.apache.flink.table.types.logical.ZonedTimestampType;
 
 import org.junit.jupiter.api.Test;
 
-import java.util.Arrays;
-import java.util.List;
-
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.Assert.assertThrows;
 
 /** Unit tests for {@link CassandraFieldMapperFactory}. */
 class CassandraFieldMapperFactoryTest {
 
     @Test
     void testPrimitiveTypeMappers() {
-        // Test boolean mapper
         CassandraFieldMapper booleanMapper =
                 CassandraFieldMapperFactory.createFieldMapper(new BooleanType());
         assertThat(booleanMapper).isInstanceOf(PrimitiveFieldMappers.BooleanMapper.class);
 
-        // Test byte mapper
         CassandraFieldMapper byteMapper =
                 CassandraFieldMapperFactory.createFieldMapper(new TinyIntType());
         assertThat(byteMapper).isInstanceOf(PrimitiveFieldMappers.ByteMapper.class);
 
-        // Test short mapper
         CassandraFieldMapper shortMapper =
                 CassandraFieldMapperFactory.createFieldMapper(new SmallIntType());
         assertThat(shortMapper).isInstanceOf(PrimitiveFieldMappers.ShortMapper.class);
 
-        // Test integer mapper
         CassandraFieldMapper intMapper =
                 CassandraFieldMapperFactory.createFieldMapper(new IntType());
         assertThat(intMapper).isInstanceOf(PrimitiveFieldMappers.IntegerMapper.class);
 
-        // Test long mapper
         CassandraFieldMapper longMapper =
                 CassandraFieldMapperFactory.createFieldMapper(new BigIntType());
         assertThat(longMapper).isInstanceOf(PrimitiveFieldMappers.LongMapper.class);
 
-        // Test float mapper
         CassandraFieldMapper floatMapper =
                 CassandraFieldMapperFactory.createFieldMapper(new FloatType());
         assertThat(floatMapper).isInstanceOf(PrimitiveFieldMappers.FloatMapper.class);
 
-        // Test double mapper
         CassandraFieldMapper doubleMapper =
                 CassandraFieldMapperFactory.createFieldMapper(new DoubleType());
         assertThat(doubleMapper).isInstanceOf(PrimitiveFieldMappers.DoubleMapper.class);
 
-        // Test string mapper
         CassandraFieldMapper stringMapper =
                 CassandraFieldMapperFactory.createFieldMapper(VarCharType.STRING_TYPE);
         assertThat(stringMapper).isInstanceOf(PrimitiveFieldMappers.StringMapper.class);
 
-        // Test date mapper
+        CassandraFieldMapper charMapper =
+                CassandraFieldMapperFactory.createFieldMapper(new CharType(10));
+        assertThat(charMapper).isInstanceOf(PrimitiveFieldMappers.StringMapper.class);
+
         CassandraFieldMapper dateMapper =
                 CassandraFieldMapperFactory.createFieldMapper(new DateType());
         assertThat(dateMapper).isInstanceOf(PrimitiveFieldMappers.DateMapper.class);
 
-        // Test timestamp mapper
+        CassandraFieldMapper timeMapper =
+                CassandraFieldMapperFactory.createFieldMapper(new TimeType());
+        assertThat(timeMapper).isInstanceOf(PrimitiveFieldMappers.TimeMapper.class);
+
         CassandraFieldMapper timestampMapper =
                 CassandraFieldMapperFactory.createFieldMapper(new TimestampType());
         assertThat(timestampMapper).isInstanceOf(PrimitiveFieldMappers.TimestampMapper.class);
 
-        // Test binary mapper
         CassandraFieldMapper binaryMapper =
                 CassandraFieldMapperFactory.createFieldMapper(new BinaryType(10));
         assertThat(binaryMapper).isInstanceOf(PrimitiveFieldMappers.BinaryMapper.class);
 
-        // Test varbinary mapper
         CassandraFieldMapper varbinaryMapper =
                 CassandraFieldMapperFactory.createFieldMapper(new VarBinaryType(100));
         assertThat(varbinaryMapper).isInstanceOf(PrimitiveFieldMappers.BinaryMapper.class);
@@ -112,36 +112,39 @@ class CassandraFieldMapperFactoryTest {
 
     @Test
     void testDecimalMappers() {
-        // Test regular decimal mapper (precision <= 18)
+        // Test that all decimal types now use DynamicDecimalMapper
+        // This mapper determines the actual Cassandra type (varint vs decimal) at runtime
+
+        // Test regular decimal precision
         CassandraFieldMapper decimalMapper =
                 CassandraFieldMapperFactory.createFieldMapper(new DecimalType(10, 2));
-        assertThat(decimalMapper).isInstanceOf(PrimitiveFieldMappers.DecimalMapper.class);
+        assertThat(decimalMapper).isInstanceOf(PrimitiveFieldMappers.DynamicDecimalMapper.class);
 
-        // Test varint mapper (precision > 18)
-        CassandraFieldMapper varintMapper =
+        // Test high precision decimal
+        CassandraFieldMapper highPrecisionMapper =
                 CassandraFieldMapperFactory.createFieldMapper(new DecimalType(25, 5));
-        assertThat(varintMapper).isInstanceOf(PrimitiveFieldMappers.VarintMapper.class);
+        assertThat(highPrecisionMapper)
+                .isInstanceOf(PrimitiveFieldMappers.DynamicDecimalMapper.class);
 
         // Test edge case: exactly 18 precision
         CassandraFieldMapper edgeDecimalMapper =
                 CassandraFieldMapperFactory.createFieldMapper(new DecimalType(18, 2));
-        assertThat(edgeDecimalMapper).isInstanceOf(PrimitiveFieldMappers.DecimalMapper.class);
+        assertThat(edgeDecimalMapper)
+                .isInstanceOf(PrimitiveFieldMappers.DynamicDecimalMapper.class);
 
         // Test edge case: 19 precision
         CassandraFieldMapper edgeVarintMapper =
                 CassandraFieldMapperFactory.createFieldMapper(new DecimalType(19, 2));
-        assertThat(edgeVarintMapper).isInstanceOf(PrimitiveFieldMappers.VarintMapper.class);
+        assertThat(edgeVarintMapper).isInstanceOf(PrimitiveFieldMappers.DynamicDecimalMapper.class);
     }
 
     @Test
     void testArrayMapper() {
-        // Test array of strings
         ArrayType stringArrayType = new ArrayType(VarCharType.STRING_TYPE);
         CassandraFieldMapper arrayMapper =
                 CassandraFieldMapperFactory.createFieldMapper(stringArrayType);
         assertThat(arrayMapper).isInstanceOf(CollectionFieldMappers.ArrayMapper.class);
 
-        // Test nested array (array of array of integers)
         ArrayType nestedArrayType = new ArrayType(new ArrayType(new IntType()));
         CassandraFieldMapper nestedArrayMapper =
                 CassandraFieldMapperFactory.createFieldMapper(nestedArrayType);
@@ -150,12 +153,10 @@ class CassandraFieldMapperFactoryTest {
 
     @Test
     void testMapMapper() {
-        // Test map<string, integer>
         MapType mapType = new MapType(VarCharType.STRING_TYPE, new IntType());
         CassandraFieldMapper mapMapper = CassandraFieldMapperFactory.createFieldMapper(mapType);
         assertThat(mapMapper).isInstanceOf(CollectionFieldMappers.MapMapper.class);
 
-        // Test nested map (map<string, map<string, integer>>)
         MapType nestedMapType =
                 new MapType(
                         VarCharType.STRING_TYPE,
@@ -167,13 +168,11 @@ class CassandraFieldMapperFactoryTest {
 
     @Test
     void testMultisetMapper() {
-        // Test multiset<string> (Cassandra set)
         MultisetType multisetType = new MultisetType(VarCharType.STRING_TYPE);
         CassandraFieldMapper setMapper =
                 CassandraFieldMapperFactory.createFieldMapper(multisetType);
         assertThat(setMapper).isInstanceOf(CollectionFieldMappers.SetMapper.class);
 
-        // Test nested multiset
         MultisetType nestedMultisetType = new MultisetType(new ArrayType(new IntType()));
         CassandraFieldMapper nestedSetMapper =
                 CassandraFieldMapperFactory.createFieldMapper(nestedMultisetType);
@@ -182,7 +181,6 @@ class CassandraFieldMapperFactoryTest {
 
     @Test
     void testRowMapper() {
-        // Test simple row type
         RowType rowType =
                 RowType.of(
                         new LogicalType[] {
@@ -192,7 +190,6 @@ class CassandraFieldMapperFactoryTest {
         CassandraFieldMapper rowMapper = CassandraFieldMapperFactory.createFieldMapper(rowType);
         assertThat(rowMapper).isInstanceOf(CollectionFieldMappers.RowMapper.class);
 
-        // Test nested row type
         RowType nestedRowType =
                 RowType.of(
                         new LogicalType[] {
@@ -204,60 +201,6 @@ class CassandraFieldMapperFactoryTest {
         CassandraFieldMapper nestedRowMapper =
                 CassandraFieldMapperFactory.createFieldMapper(nestedRowType);
         assertThat(nestedRowMapper).isInstanceOf(CollectionFieldMappers.RowMapper.class);
-    }
-
-    @Test
-    void testGenericMapperFallback() {
-        CassandraFieldMapper stringMapper =
-                CassandraFieldMapperFactory.createFieldMapper(VarCharType.STRING_TYPE);
-        assertThat(stringMapper).isNotInstanceOf(PrimitiveFieldMappers.GenericMapper.class);
-        assertThat(stringMapper).isInstanceOf(PrimitiveFieldMappers.StringMapper.class);
-    }
-
-    @Test
-    void testSpecializedFactoryMethods() {
-        // Test createVarintMapper
-        CassandraFieldMapper varintMapper = CassandraFieldMapperFactory.createVarintMapper(30, 10);
-        assertThat(varintMapper).isInstanceOf(PrimitiveFieldMappers.VarintMapper.class);
-
-        // Test createInetMapper
-        CassandraFieldMapper inetMapper = CassandraFieldMapperFactory.createInetMapper();
-        assertThat(inetMapper).isInstanceOf(PrimitiveFieldMappers.InetMapper.class);
-
-        // Test createBlobMapper
-        CassandraFieldMapper blobMapper = CassandraFieldMapperFactory.createBlobMapper();
-        assertThat(blobMapper).isInstanceOf(PrimitiveFieldMappers.BinaryMapper.class);
-
-        // Test createDurationMapper
-        CassandraFieldMapper durationMapper = CassandraFieldMapperFactory.createDurationMapper();
-        assertThat(durationMapper).isInstanceOf(PrimitiveFieldMappers.DurationMapper.class);
-    }
-
-    @Test
-    void testCreateTupleMapper() {
-        // Test tuple mapper with mixed types
-        List<LogicalType> elementTypes =
-                Arrays.asList(
-                        VarCharType.STRING_TYPE,
-                        new IntType(),
-                        new BooleanType(),
-                        new DoubleType());
-
-        CassandraFieldMapper tupleMapper =
-                CassandraFieldMapperFactory.createTupleMapper(elementTypes);
-        assertThat(tupleMapper).isInstanceOf(CollectionFieldMappers.TupleMapper.class);
-
-        // Test empty tuple
-        List<LogicalType> emptyTypes = Arrays.asList();
-        CassandraFieldMapper emptyTupleMapper =
-                CassandraFieldMapperFactory.createTupleMapper(emptyTypes);
-        assertThat(emptyTupleMapper).isInstanceOf(CollectionFieldMappers.TupleMapper.class);
-
-        // Test single element tuple
-        List<LogicalType> singleTypes = Arrays.asList(VarCharType.STRING_TYPE);
-        CassandraFieldMapper singleTupleMapper =
-                CassandraFieldMapperFactory.createTupleMapper(singleTypes);
-        assertThat(singleTupleMapper).isInstanceOf(CollectionFieldMappers.TupleMapper.class);
     }
 
     @Test
@@ -273,9 +216,6 @@ class CassandraFieldMapperFactoryTest {
         CassandraFieldMapper complexMapper =
                 CassandraFieldMapperFactory.createFieldMapper(complexArrayType);
         assertThat(complexMapper).isInstanceOf(CollectionFieldMappers.ArrayMapper.class);
-
-        // Test another complex structure: row<id:int, metadata:map<string,string>,
-        // tags:multiset<string>>
         RowType complexRowType =
                 RowType.of(
                         new LogicalType[] {
@@ -291,20 +231,6 @@ class CassandraFieldMapperFactoryTest {
     }
 
     @Test
-    void testVarintMapperEdgeCases() {
-        // Test various precision/scale combinations for varint (max precision is 38)
-        CassandraFieldMapper varint1 = CassandraFieldMapperFactory.createVarintMapper(38, 0);
-        assertThat(varint1).isInstanceOf(PrimitiveFieldMappers.VarintMapper.class);
-
-        CassandraFieldMapper varint2 = CassandraFieldMapperFactory.createVarintMapper(38, 10);
-        assertThat(varint2).isInstanceOf(PrimitiveFieldMappers.VarintMapper.class);
-
-        // Test minimum values
-        CassandraFieldMapper varint3 = CassandraFieldMapperFactory.createVarintMapper(1, 0);
-        assertThat(varint3).isInstanceOf(PrimitiveFieldMappers.VarintMapper.class);
-    }
-
-    @Test
     void testRecursiveMapperCreation() {
         RowType deepRowType =
                 RowType.of(
@@ -317,5 +243,58 @@ class CassandraFieldMapperFactoryTest {
                 CassandraFieldMapperFactory.createFieldMapper(deepArrayType);
         assertThat(deepMapper).isInstanceOf(CollectionFieldMappers.ArrayMapper.class);
         assertThat(deepMapper).isNotNull();
+    }
+
+    @Test
+    void testUnsupportedTypeThrowsException() {
+        ZonedTimestampType zonedTimestampType = new ZonedTimestampType();
+
+        UnsupportedOperationException exception1 =
+                assertThrows(
+                        UnsupportedOperationException.class,
+                        () -> CassandraFieldMapperFactory.createFieldMapper(zonedTimestampType));
+
+        assertThat(exception1.getMessage())
+                .contains("TIMESTAMP_WITH_TIME_ZONE is not supported")
+                .contains("timezone-naive")
+                .contains("UTC");
+
+        LocalZonedTimestampType localZonedType = new LocalZonedTimestampType();
+
+        UnsupportedOperationException exception2 =
+                assertThrows(
+                        UnsupportedOperationException.class,
+                        () -> CassandraFieldMapperFactory.createFieldMapper(localZonedType));
+
+        assertThat(exception2.getMessage())
+                .contains("TIMESTAMP_WITH_LOCAL_TIME_ZONE is not supported")
+                .contains("timezone-naive");
+
+        // Test interval types
+        YearMonthIntervalType yearMonthInterval =
+                new YearMonthIntervalType(YearMonthIntervalType.YearMonthResolution.YEAR_TO_MONTH);
+
+        UnsupportedOperationException exception3 =
+                assertThrows(
+                        UnsupportedOperationException.class,
+                        () -> CassandraFieldMapperFactory.createFieldMapper(yearMonthInterval));
+
+        assertThat(exception3.getMessage())
+                .contains("INTERVAL_YEAR_MONTH is not supported")
+                .contains("native interval types")
+                .contains("BIGINT");
+
+        // Test day-time interval
+        DayTimeIntervalType dayTimeInterval =
+                new DayTimeIntervalType(DayTimeIntervalType.DayTimeResolution.DAY_TO_SECOND);
+
+        UnsupportedOperationException exception4 =
+                assertThrows(
+                        UnsupportedOperationException.class,
+                        () -> CassandraFieldMapperFactory.createFieldMapper(dayTimeInterval));
+
+        assertThat(exception4.getMessage())
+                .contains("INTERVAL_DAY_TIME is not supported")
+                .contains("native interval types");
     }
 }

@@ -29,6 +29,7 @@ import org.apache.flink.table.types.DataType;
 
 import com.datastax.driver.core.querybuilder.Select;
 
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -62,16 +63,16 @@ public class CassandraTableFactory implements DynamicTableSourceFactory {
 
     @Override
     public Set<ConfigOption<?>> requiredOptions() {
-        Set<ConfigOption<?>> options = new HashSet<>();
-        options.add(HOSTS);
-        options.add(KEYSPACE);
-        options.add(TABLE);
-        return options;
+        // No options are always required - validation happens in createDynamicTableSource
+        return Collections.emptySet();
     }
 
     @Override
     public Set<ConfigOption<?>> optionalOptions() {
         Set<ConfigOption<?>> options = new HashSet<>();
+        options.add(HOSTS); // Required in practice but validated in createDynamicTableSource
+        options.add(KEYSPACE); // Required for default query generation
+        options.add(TABLE); // Required for default query generation
         options.add(PORT); // Default: 9042
         options.add(USERNAME); // Required only for default ClusterBuilder
         options.add(PASSWORD); // Required only for default ClusterBuilder
@@ -90,7 +91,10 @@ public class CassandraTableFactory implements DynamicTableSourceFactory {
                 FactoryUtil.createTableFactoryHelper(this, context);
         helper.validate();
 
-        // Extract configuration
+        // Validate configuration
+        validateConfiguration(helper);
+
+        // Extract required configuration
         final String keyspace = helper.getOptions().get(KEYSPACE);
         final String table = helper.getOptions().get(TABLE);
         final String query = helper.getOptions().get(QUERY);
@@ -165,17 +169,6 @@ public class CassandraTableFactory implements DynamicTableSourceFactory {
 
         // If no custom ClusterBuilder specified, use default implementation
         if (isEmpty(clusterBuilderClass)) {
-            // Validate that username and password are provided for default ClusterBuilder
-            if (isEmpty(username)) {
-                throw new IllegalArgumentException(
-                        "Username is required when using default CassandraClusterBuilder. "
-                                + "Provide 'username' option or use custom 'cluster-builder-class'.");
-            }
-            if (isEmpty(password)) {
-                throw new IllegalArgumentException(
-                        "Password is required when using default CassandraClusterBuilder. "
-                                + "Provide 'password' option or use custom 'cluster-builder-class'.");
-            }
             return new CassandraClusterBuilder(
                     hosts,
                     port,
@@ -210,6 +203,50 @@ public class CassandraTableFactory implements DynamicTableSourceFactory {
                             + clusterBuilderClass
                             + ". Make sure the class has a public no-argument constructor.",
                     e);
+        }
+    }
+
+    /**
+     * Validates the entire configuration for consistency and completeness.
+     *
+     * @param helper Factory helper containing all configuration options
+     * @throws IllegalArgumentException if configuration is invalid
+     */
+    private void validateConfiguration(FactoryUtil.TableFactoryHelper helper) {
+        final String hosts = helper.getOptions().get(HOSTS);
+        final String keyspace = helper.getOptions().get(KEYSPACE);
+        final String table = helper.getOptions().get(TABLE);
+        final String query = helper.getOptions().get(QUERY);
+        final String clusterBuilderClass = helper.getOptions().get(CLUSTER_BUILDER_CLASS);
+        final String username = helper.getOptions().get(USERNAME);
+        final String password = helper.getOptions().get(PASSWORD);
+
+        boolean hasCustomQuery = !isEmpty(query);
+        boolean hasConnectionDetails = !isEmpty(keyspace) && !isEmpty(table);
+        boolean hasCustomClusterBuilder = !isEmpty(clusterBuilderClass);
+
+        // Must provide either custom query OR keyspace+table for default query
+        if (!hasCustomQuery && !hasConnectionDetails) {
+            throw new IllegalArgumentException(
+                    "Must provide either 'query' OR both 'keyspace' and 'table' for default query generation");
+        }
+
+        // Validate default ClusterBuilder requirements
+        if (!hasCustomClusterBuilder) {
+            if (isEmpty(hosts)) {
+                throw new IllegalArgumentException(
+                        "'hosts' is required when using default ClusterBuilder");
+            }
+            if (isEmpty(username)) {
+                throw new IllegalArgumentException(
+                        "Username is required when using default CassandraClusterBuilder. "
+                                + "Provide 'username' option or use custom 'cluster-builder-class'.");
+            }
+            if (isEmpty(password)) {
+                throw new IllegalArgumentException(
+                        "Password is required when using default CassandraClusterBuilder. "
+                                + "Provide 'password' option or use custom 'cluster-builder-class'.");
+            }
         }
     }
 }

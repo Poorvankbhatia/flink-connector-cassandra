@@ -24,6 +24,8 @@ import org.apache.flink.connector.base.source.reader.RecordEmitter;
 import org.apache.flink.connector.cassandra.source.reader.converter.CassandraRowToTypeConverter;
 import org.apache.flink.connector.cassandra.source.split.CassandraSplit;
 
+import static java.util.Objects.requireNonNull;
+
 /**
  * Unified record emitter that uses the strategy pattern for deserialization.
  *
@@ -35,7 +37,7 @@ class CassandraRowEmitter<OUT> implements RecordEmitter<CassandraRow, OUT, Cassa
     private final CassandraRowToTypeConverter<OUT> converter;
 
     public CassandraRowEmitter(CassandraRowToTypeConverter<OUT> converter) {
-        this.converter = java.util.Objects.requireNonNull(converter, "Converter cannot be null");
+        this.converter = requireNonNull(converter, "Converter cannot be null");
     }
 
     @Override

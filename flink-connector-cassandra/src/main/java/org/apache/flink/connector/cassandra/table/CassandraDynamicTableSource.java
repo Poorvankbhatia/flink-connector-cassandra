@@ -19,6 +19,7 @@
 package org.apache.flink.connector.cassandra.table;
 
 import org.apache.flink.annotation.Internal;
+import org.apache.flink.configuration.MemorySize;
 import org.apache.flink.connector.cassandra.source.CassandraSource;
 import org.apache.flink.streaming.connectors.cassandra.ClusterBuilder;
 import org.apache.flink.table.connector.ChangelogMode;
@@ -70,9 +71,7 @@ public class CassandraDynamicTableSource implements ScanTableSource {
                 CassandraSource.builder()
                         .setClusterBuilder(clusterBuilder)
                         .setQuery(query)
-                        .setMaxSplitMemorySize(
-                                org.apache.flink.configuration.MemorySize.parse(
-                                        maxSplitMemorySize + "b"))
+                        .setMaxSplitMemorySize(MemorySize.parse(maxSplitMemorySize + "b"))
                         .forRowData(rowType);
 
         return SourceProvider.of(cassandraSource);

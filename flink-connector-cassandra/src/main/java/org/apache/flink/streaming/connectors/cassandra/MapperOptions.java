@@ -18,8 +18,6 @@
 
 package org.apache.flink.streaming.connectors.cassandra;
 
-import org.apache.flink.annotation.PublicEvolving;
-
 import com.datastax.driver.mapping.Mapper;
 
 import java.io.Serializable;
@@ -27,7 +25,6 @@ import java.io.Serializable;
 /**
  * This class is used to configure a {@link com.datastax.driver.mapping.Mapper} after deployment.
  */
-@PublicEvolving
 public interface MapperOptions extends Serializable {
 
     /**

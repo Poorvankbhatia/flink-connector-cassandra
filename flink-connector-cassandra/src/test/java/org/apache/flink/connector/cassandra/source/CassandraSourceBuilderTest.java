@@ -151,6 +151,74 @@ class CassandraSourceBuilderTest {
         assertThat(source).isNotNull();
     }
 
+    @Test
+    void testBuilderWithValidMemorySize() {
+        // Test valid memory sizes
+        CassandraSource<TestPojo> source1 =
+                CassandraSource.builder()
+                        .setClusterBuilder(TEST_CLUSTER_BUILDER)
+                        .setQuery(TEST_QUERY)
+                        .setMaxSplitMemorySize(MemorySize.ofMebiBytes(64)) // Default
+                        .forPojo(TestPojo.class);
+        assertThat(source1).isNotNull();
+
+        CassandraSource<TestPojo> source2 =
+                CassandraSource.builder()
+                        .setClusterBuilder(TEST_CLUSTER_BUILDER)
+                        .setQuery(TEST_QUERY)
+                        .setMaxSplitMemorySize(MemorySize.ofMebiBytes(128))
+                        .forPojo(TestPojo.class);
+        assertThat(source2).isNotNull();
+    }
+
+    @Test
+    void testBuilderWithNullClusterBuilder() {
+        assertThatThrownBy(
+                        () ->
+                                CassandraSource.builder()
+                                        .setClusterBuilder(null)
+                                        .setQuery(TEST_QUERY)
+                                        .forPojo(TestPojo.class))
+                .isInstanceOf(NullPointerException.class)
+                .hasMessageContaining("ClusterBuilder is required");
+    }
+
+    @Test
+    void testBuilderWithNullQuery() {
+        assertThatThrownBy(
+                        () ->
+                                CassandraSource.builder()
+                                        .setClusterBuilder(TEST_CLUSTER_BUILDER)
+                                        .setQuery(null)
+                                        .forPojo(TestPojo.class))
+                .isInstanceOf(NullPointerException.class)
+                .hasMessageContaining("Query is required");
+    }
+
+    @Test
+    void testBuilderWithEmptyQuery() {
+        assertThatThrownBy(
+                        () ->
+                                CassandraSource.builder()
+                                        .setClusterBuilder(TEST_CLUSTER_BUILDER)
+                                        .setQuery("")
+                                        .forPojo(TestPojo.class))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Query must be of the form select");
+    }
+
+    @Test
+    void testBuilderWithNullMapperOptions() {
+        // Null mapper options should be allowed and use defaults
+        CassandraSource<TestPojo> source =
+                CassandraSource.builder()
+                        .setClusterBuilder(TEST_CLUSTER_BUILDER)
+                        .setQuery(TEST_QUERY)
+                        .setMapperOptions(null)
+                        .forPojo(TestPojo.class);
+        assertThat(source).isNotNull();
+    }
+
     /** Test POJO class for testing. */
     public static class TestPojo {
         private int id;

@@ -23,6 +23,8 @@ import org.apache.flink.table.data.StringData;
 import org.apache.flink.table.data.TimestampData;
 import org.apache.flink.table.types.logical.DecimalType;
 
+import com.datastax.driver.core.ColumnDefinitions;
+import com.datastax.driver.core.DataType;
 import com.datastax.driver.core.Duration;
 import com.datastax.driver.core.LocalDate;
 import com.datastax.driver.core.Row;
@@ -39,6 +41,7 @@ import java.time.Instant;
 import java.util.Date;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 /** Unit tests for {@link PrimitiveFieldMappers}. */
@@ -109,6 +112,13 @@ class PrimitiveFieldMappersTest {
         when(mockRow.isNull("field")).thenReturn(false);
         when(mockRow.getInt("field")).thenReturn(12345);
         assertThat(mapper.extractFromRow(mockRow, "field")).isEqualTo(12345);
+
+        // Test convertValue method with Long input (fixes ClassCastException)
+        assertThat(mapper.convertValue(null)).isNull();
+        assertThat(mapper.convertValue(42)).isEqualTo(42);
+        assertThat(mapper.convertValue(42L)).isEqualTo(42); // Long to int conversion
+        assertThat(mapper.convertValue((short) 100)).isEqualTo(100); // Short to int conversion
+        assertThat(mapper.convertValue((byte) 5)).isEqualTo(5); // Byte to int conversion
     }
 
     @Test
@@ -123,6 +133,12 @@ class PrimitiveFieldMappersTest {
         when(mockRow.isNull("field")).thenReturn(false);
         when(mockRow.getLong("field")).thenReturn(123456789L);
         assertThat(mapper.extractFromRow(mockRow, "field")).isEqualTo(123456789L);
+
+        assertThat(mapper.convertValue(null)).isNull();
+        assertThat(mapper.convertValue(42L)).isEqualTo(42L);
+        assertThat(mapper.convertValue(42)).isEqualTo(42L); // Integer to long conversion
+        assertThat(mapper.convertValue((short) 100)).isEqualTo(100L); // Short to long conversion
+        assertThat(mapper.convertValue((byte) 5)).isEqualTo(5L); // Byte to long conversion
     }
 
     @Test
@@ -154,19 +170,42 @@ class PrimitiveFieldMappersTest {
     }
 
     @Test
-    void testStringMapper() {
+    void testStringMapper() throws Exception {
         PrimitiveFieldMappers.StringMapper mapper = new PrimitiveFieldMappers.StringMapper();
 
         // Test null value
         when(mockRow.isNull("field")).thenReturn(true);
         assertThat(mapper.extractFromRow(mockRow, "field")).isNull();
 
-        // Test string value
+        // Test string value (text type)
         when(mockRow.isNull("field")).thenReturn(false);
+        ColumnDefinitions columnDefs = mock(ColumnDefinitions.class);
+        DataType dataType = mock(DataType.class);
+        DataType.Name typeName = mock(DataType.Name.class);
+        when(mockRow.getColumnDefinitions()).thenReturn(columnDefs);
+        when(columnDefs.getType("field")).thenReturn(dataType);
+        when(dataType.getName()).thenReturn(typeName);
+        when(typeName.toString()).thenReturn("text");
         when(mockRow.getString("field")).thenReturn("hello");
         Object result = mapper.extractFromRow(mockRow, "field");
         assertThat(result).isInstanceOf(StringData.class);
         assertThat(result.toString()).isEqualTo("hello");
+
+        // Test inet value
+        when(typeName.toString()).thenReturn("inet");
+        InetAddress testAddress = InetAddress.getByName("192.168.1.1");
+        when(mockRow.getInet("field")).thenReturn(testAddress);
+        Object inetResult = mapper.extractFromRow(mockRow, "field");
+        assertThat(inetResult).isInstanceOf(StringData.class);
+        assertThat(inetResult.toString()).isEqualTo("192.168.1.1");
+
+        // Test duration value
+        when(typeName.toString()).thenReturn("duration");
+        Duration testDuration = Duration.newInstance(1, 2, 3000000000L);
+        when(mockRow.get("field", Duration.class)).thenReturn(testDuration);
+        Object durationResult = mapper.extractFromRow(mockRow, "field");
+        assertThat(durationResult).isInstanceOf(StringData.class);
+        assertThat(durationResult.toString()).isEqualTo(testDuration.toString());
 
         // Test convertValue method
         assertThat(mapper.convertValue(null)).isNull();
@@ -216,6 +255,36 @@ class PrimitiveFieldMappersTest {
         assertThat(mapper.convertValue(null)).isNull();
         Integer converted = (Integer) mapper.convertValue(testDate);
         assertThat(converted).isEqualTo((int) java.time.LocalDate.of(2023, 6, 15).toEpochDay());
+    }
+
+    @Test
+    void testTimeMapper() {
+        PrimitiveFieldMappers.TimeMapper mapper = new PrimitiveFieldMappers.TimeMapper();
+
+        // Test null value
+        when(mockRow.isNull("field")).thenReturn(true);
+        assertThat(mapper.extractFromRow(mockRow, "field")).isNull();
+
+        // Test time value - Cassandra time is nanoseconds since midnight
+        when(mockRow.isNull("field")).thenReturn(false);
+        long testTimeNanos =
+                14L * 3600 * 1_000_000_000
+                        + 30L * 60 * 1_000_000_000
+                        + 45L * 1_000_000_000; // 14:30:45
+        when(mockRow.getTime("field")).thenReturn(testTimeNanos);
+        Object result = mapper.extractFromRow(mockRow, "field");
+        assertThat(result).isInstanceOf(Integer.class);
+
+        // Expected: 14:30:45 = 14*3600*1000 + 30*60*1000 + 45*1000 = 52245000 milliseconds
+        int expectedMillis = 14 * 3600 * 1000 + 30 * 60 * 1000 + 45 * 1000;
+        assertThat(result).isEqualTo(expectedMillis);
+
+        // Test convertValue method
+        assertThat(mapper.convertValue(null)).isNull();
+        assertThat(mapper.convertValue(1_000_000_000L))
+                .isEqualTo(1000); // 1 second in nanos -> 1000 millis
+        assertThat(mapper.convertValue(500_000_000L))
+                .isEqualTo(500); // 0.5 second in nanos -> 500 millis
     }
 
     @Test
@@ -292,62 +361,5 @@ class PrimitiveFieldMappersTest {
         assertThat(mapper.convertValue(null)).isNull();
         DecimalData converted = (DecimalData) mapper.convertValue(testVarint);
         assertThat(converted.toBigDecimal()).isEqualTo(new BigDecimal(testVarint));
-    }
-
-    @Test
-    void testInetMapper() throws Exception {
-        PrimitiveFieldMappers.InetMapper mapper = new PrimitiveFieldMappers.InetMapper();
-
-        // Test null value
-        when(mockRow.isNull("field")).thenReturn(true);
-        assertThat(mapper.extractFromRow(mockRow, "field")).isNull();
-
-        // Test inet value
-        when(mockRow.isNull("field")).thenReturn(false);
-        InetAddress testAddress = InetAddress.getByName("192.168.1.1");
-        when(mockRow.getInet("field")).thenReturn(testAddress);
-        Object result = mapper.extractFromRow(mockRow, "field");
-        assertThat(result).isInstanceOf(StringData.class);
-
-        // Test convertValue method
-        assertThat(mapper.convertValue(null)).isNull();
-        StringData converted = (StringData) mapper.convertValue(testAddress);
-        assertThat(converted.toString()).isEqualTo("192.168.1.1");
-    }
-
-    @Test
-    void testDurationMapper() {
-        PrimitiveFieldMappers.DurationMapper mapper = new PrimitiveFieldMappers.DurationMapper();
-
-        // Test null value
-        when(mockRow.isNull("field")).thenReturn(true);
-        assertThat(mapper.extractFromRow(mockRow, "field")).isNull();
-
-        // Test duration value
-        when(mockRow.isNull("field")).thenReturn(false);
-        Duration testDuration = Duration.newInstance(1, 2, 3000000000L);
-        when(mockRow.get("field", Duration.class)).thenReturn(testDuration);
-        Object result = mapper.extractFromRow(mockRow, "field");
-        assertThat(result).isInstanceOf(StringData.class);
-
-        // Test convertValue method
-        assertThat(mapper.convertValue(null)).isNull();
-        StringData converted = (StringData) mapper.convertValue(testDuration);
-        assertThat(converted.toString()).isEqualTo(testDuration.toString());
-    }
-
-    @Test
-    void testGenericMapper() {
-        PrimitiveFieldMappers.GenericMapper mapper = new PrimitiveFieldMappers.GenericMapper();
-
-        // Test null value
-        when(mockRow.isNull("field")).thenReturn(true);
-        assertThat(mapper.extractFromRow(mockRow, "field")).isNull();
-
-        // Test generic value
-        when(mockRow.isNull("field")).thenReturn(false);
-        Object testObject = new Object();
-        when(mockRow.getObject("field")).thenReturn(testObject);
-        assertThat(mapper.extractFromRow(mockRow, "field")).isEqualTo(testObject);
     }
 }

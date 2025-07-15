@@ -51,6 +51,9 @@ import java.util.Objects;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import static org.apache.flink.util.Preconditions.checkNotNull;
+import static org.apache.flink.util.Preconditions.checkState;
+
 /**
  * A bounded source to read from Cassandra and return data as a {@code DataStream<OUT>} where OUT
  * can be any type determined by the provided converter. This source uses a pluggable converter
@@ -188,10 +191,7 @@ public class CassandraSource<OUT>
         this.rowToTypeConverter = rowToTypeConverter;
     }
 
-    /**
-     * @deprecated Use {@link #builder()} instead. This constructor will be removed in future
-     *     versions.
-     */
+    /** @deprecated Use {@link #builder()} instead. */
     @Deprecated
     public CassandraSource(
             ClusterBuilder clusterBuilder,
@@ -201,10 +201,7 @@ public class CassandraSource<OUT>
         this(clusterBuilder, MAX_SPLIT_MEMORY_SIZE_DEFAULT, pojoClass, query, mapperOptions);
     }
 
-    /**
-     * @deprecated Use {@link #builder()} instead. This constructor will be removed in future
-     *     versions.
-     */
+    /** @deprecated Use {@link #builder()} instead. */
     @Deprecated
     public CassandraSource(
             ClusterBuilder clusterBuilder,
@@ -212,15 +209,14 @@ public class CassandraSource<OUT>
             Class<OUT> pojoClass,
             String query,
             MapperOptions mapperOptions) {
-        Objects.requireNonNull(clusterBuilder, "ClusterBuilder required but not provided");
-        Objects.requireNonNull(pojoClass, "POJO class required but not provided");
-        Objects.requireNonNull(query, "query required but not provided");
-        if (maxSplitMemorySize < MIN_SPLIT_MEMORY_SIZE) {
-            throw new IllegalArgumentException(
-                    String.format(
-                            "Defined maxSplitMemorySize (%s) is below minimum (%s)",
-                            maxSplitMemorySize, MIN_SPLIT_MEMORY_SIZE));
-        }
+        checkNotNull(clusterBuilder, "ClusterBuilder required but not provided");
+        checkNotNull(pojoClass, "POJO class required but not provided");
+        checkNotNull(query, "query required but not provided");
+        checkState(
+                maxSplitMemorySize >= MIN_SPLIT_MEMORY_SIZE,
+                "Defined maxSplitMemorySize (%s) is below minimum (%s)",
+                maxSplitMemorySize,
+                MIN_SPLIT_MEMORY_SIZE);
         this.maxSplitMemorySize = maxSplitMemorySize;
         final Matcher queryMatcher = checkQueryValidity(query);
         this.query = query;
@@ -234,15 +230,13 @@ public class CassandraSource<OUT>
 
     @VisibleForTesting
     public static Matcher checkQueryValidity(String query) {
-        if (query.matches(CQL_PROHIBITED_CLAUSES_REGEXP.pattern())) {
-            throw new IllegalStateException(
-                    "Aggregations/OrderBy are not supported because the query is executed on subsets/partitions of the input table");
-        }
+        checkState(
+                !query.matches(CQL_PROHIBITED_CLAUSES_REGEXP.pattern()),
+                "Aggregations/OrderBy are not supported because the query is executed on subsets/partitions of the input table");
         final Matcher queryMatcher = SELECT_REGEXP.matcher(query);
-        if (!queryMatcher.matches()) {
-            throw new IllegalStateException(
-                    "Query must be of the form select ... from keyspace.table ...;");
-        }
+        checkState(
+                queryMatcher.matches(),
+                "Query must be of the form select ... from keyspace.table ...;");
         return queryMatcher;
     }
 
@@ -255,8 +249,7 @@ public class CassandraSource<OUT>
     @Override
     public SourceReader<OUT, CassandraSplit> createReader(SourceReaderContext readerContext) {
         return new CassandraSourceReaderFactory<OUT>()
-                .createWithStrategy(
-                        readerContext, clusterBuilder, rowToTypeConverter, query, keyspace, table);
+                .create(readerContext, clusterBuilder, rowToTypeConverter, query, keyspace, table);
     }
 
     @Internal

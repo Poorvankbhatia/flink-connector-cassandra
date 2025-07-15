@@ -30,11 +30,11 @@ import com.datastax.driver.mapping.MappingManager;
 
 /**
  * Factory to create {@link CassandraSourceReader}s and allow sharing the cluster and the session
- * objects. Now supports strategy-based deserialization.
+ * objects.
  */
 public class CassandraSourceReaderFactory<OUT> {
 
-    public CassandraSourceReader<OUT> createWithStrategy(
+    public CassandraSourceReader<OUT> create(
             SourceReaderContext context,
             ClusterBuilder clusterBuilder,
             CassandraRowToTypeConverter<OUT> rowToTypeConverter,

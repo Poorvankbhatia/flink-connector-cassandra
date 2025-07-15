@@ -41,9 +41,9 @@ import java.util.Objects;
  * CassandraSource<MyPojo> source = CassandraSource.builder()
  *     .setClusterBuilder(clusterBuilder)
  *     .setQuery("SELECT * FROM my_keyspace.my_table")
- *     .setMapperOptions(() -> new Mapper.Option[] {Mapper.Option.saveNullFields(true)})
+ *     .setMapperOptions(() -> new Mapper.Option[] {Mapper.Option.consistencyLevel(ANY)})
  *     .setMaxSplitMemorySize(MemorySize.ofMebiBytes(32))
- *     .buildForPojo(MyPojo.class);
+ *     .forPojo(MyPojo.class);
  * }</pre>
  *
  * <h4>RowData Source (Table API - typically used internally):</h4>
@@ -52,7 +52,7 @@ import java.util.Objects;
  * CassandraSource<RowData> source = CassandraSource.builder()
  *     .setClusterBuilder(clusterBuilder)
  *     .setQuery("SELECT * FROM my_keyspace.my_table")
- *     .buildForRowData(rowType);
+ *     .forRowData(rowType);
  * }</pre>
  */
 @PublicEvolving

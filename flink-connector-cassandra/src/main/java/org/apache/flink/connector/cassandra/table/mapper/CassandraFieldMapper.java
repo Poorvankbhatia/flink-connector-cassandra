@@ -24,7 +24,10 @@ import com.datastax.driver.core.Row;
 
 import java.io.Serializable;
 
-/** Base interface for all Cassandra field mappers that convert values to Flink internal format. */
+/**
+ * Base interface for all Cassandra field mappers that convert values to Flink's internal {@link
+ * org.apache.flink.table.types.logical.LogicalTypeRoot}.
+ */
 @Internal
 public interface CassandraFieldMapper extends Serializable {
 

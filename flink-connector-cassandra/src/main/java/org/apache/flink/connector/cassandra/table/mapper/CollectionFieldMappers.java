@@ -61,26 +61,16 @@ public final class CollectionFieldMappers {
                 return null;
             }
 
-            // Handle both List and Set types from Cassandra
-            if (value instanceof List) {
-                List<?> list = (List<?>) value;
-                Object[] array = new Object[list.size()];
-                for (int i = 0; i < list.size(); i++) {
-                    array[i] = fieldMapper.convertValue(list.get(i));
-                }
-                return new GenericArrayData(array);
-            } else if (value instanceof Set) {
-                Set<?> set = (Set<?>) value;
-                Object[] array = new Object[set.size()];
-                int i = 0;
-                for (Object element : set) {
-                    array[i++] = fieldMapper.convertValue(element);
-                }
-                return new GenericArrayData(array);
-            } else {
-                throw new IllegalArgumentException(
-                        "Expected List or Set, got: " + value.getClass());
+            if (!(value instanceof List)) {
+                throw new IllegalArgumentException("Expected List, got: " + value.getClass());
             }
+
+            List<?> list = (List<?>) value;
+            Object[] array = new Object[list.size()];
+            for (int i = 0; i < list.size(); i++) {
+                array[i] = fieldMapper.convertValue(list.get(i));
+            }
+            return new GenericArrayData(array);
         }
     }
 
@@ -124,7 +114,7 @@ public final class CollectionFieldMappers {
         }
     }
 
-    /** Set field mapper that handles Cassandra set types as arrays. */
+    /** Set field mapper that handles Cassandra set types as multisets (maps element to count). */
     public static final class SetMapper implements CassandraFieldMapper {
         private final CassandraFieldMapper fieldMapper;
 
@@ -147,67 +137,17 @@ public final class CollectionFieldMappers {
                 return null;
             }
 
-            // Handle both Set and List types from Cassandra
-            if (value instanceof Set) {
-                Set<?> set = (Set<?>) value;
-                Object[] array = new Object[set.size()];
-                int i = 0;
-                for (Object element : set) {
-                    array[i++] = fieldMapper.convertValue(element);
-                }
-                return new GenericArrayData(array);
-            } else if (value instanceof List) {
-                List<?> list = (List<?>) value;
-                Object[] array = new Object[list.size()];
-                for (int i = 0; i < list.size(); i++) {
-                    array[i] = fieldMapper.convertValue(list.get(i));
-                }
-                return new GenericArrayData(array);
-            } else {
-                throw new IllegalArgumentException(
-                        "Expected Set or List, got: " + value.getClass());
-            }
-        }
-    }
-
-    /** Tuple field mapper that handles Cassandra tuple types. */
-    public static final class TupleMapper implements CassandraFieldMapper {
-        private final CassandraFieldMapper[] fieldMappers;
-        private final int fieldCount;
-
-        public TupleMapper(CassandraFieldMapper[] fieldMappers) {
-            this.fieldMappers = fieldMappers;
-            this.fieldCount = fieldMappers.length;
-        }
-
-        @Override
-        public Object extractFromRow(Row row, String fieldName) {
-            if (row.isNull(fieldName)) {
-                return null;
-            }
-            Object rawValue = row.getObject(fieldName);
-            return convertValue(rawValue);
-        }
-
-        @Override
-        public Object convertValue(Object value) {
-            if (value == null) {
-                return null;
+            if (!(value instanceof Set)) {
+                throw new IllegalArgumentException("Expected Set, got: " + value.getClass());
             }
 
-            TupleValue tupleValue = (TupleValue) value;
-            GenericRowData rowData = new GenericRowData(fieldCount);
-
-            for (int i = 0; i < fieldCount; i++) {
-                Object fieldValue = null;
-                if (!tupleValue.isNull(i)) {
-                    Object rawValue = tupleValue.getObject(i);
-                    fieldValue = fieldMappers[i].convertValue(rawValue);
-                }
-                rowData.setField(i, fieldValue);
+            Set<?> set = (Set<?>) value;
+            Map<Object, Object> resultMap = new HashMap<>();
+            for (Object element : set) {
+                Object convertedElement = fieldMapper.convertValue(element);
+                resultMap.put(convertedElement, 1); // Each element in a set has count 1
             }
-
-            return rowData;
+            return new GenericMapData(resultMap);
         }
     }
 

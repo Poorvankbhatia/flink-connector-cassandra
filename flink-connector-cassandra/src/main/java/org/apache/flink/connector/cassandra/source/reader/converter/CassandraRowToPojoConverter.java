@@ -32,6 +32,7 @@ import com.datastax.driver.core.Row;
 import com.datastax.driver.core.Session;
 import com.datastax.driver.mapping.Mapper;
 import com.datastax.driver.mapping.MappingManager;
+import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -43,7 +44,7 @@ import static java.util.Collections.singletonList;
 import static java.util.Objects.requireNonNull;
 
 /**
- * Cassandra row converter using Cassandra's POJO mapper to convert Cassandra Row to POJO.
+ * Cassandra row converter using Cassandra's POJO mapper to convert Cassandra's {@link Row} to POJO.
  *
  * @param <OUT> The POJO type
  */
@@ -101,7 +102,6 @@ public class CassandraRowToPojoConverter<OUT> implements CassandraRowToTypeConve
     private static class SingleRowResultSet implements ResultSet {
         private final Row row;
         private final ExecutionInfo executionInfo;
-        private boolean consumed = false;
 
         SingleRowResultSet(Row row, ExecutionInfo executionInfo) {
             this.row = row;
@@ -110,30 +110,32 @@ public class CassandraRowToPojoConverter<OUT> implements CassandraRowToTypeConve
 
         @Override
         public Row one() {
-            if (!consumed) {
-                consumed = true;
-                return row;
-            }
-            return null;
+            return row;
         }
 
         @Override
         public List<Row> all() {
-            if (!consumed) {
-                consumed = true;
-                return singletonList(row);
-            }
-            return singletonList(null);
+            return singletonList(row);
         }
 
         @Override
         public Iterator<Row> iterator() {
-            return all().iterator();
+            return new Iterator<Row>() {
+                @Override
+                public boolean hasNext() {
+                    return true;
+                }
+
+                @Override
+                public Row next() {
+                    return row;
+                }
+            };
         }
 
         @Override
         public boolean isExhausted() {
-            return consumed;
+            return true;
         }
 
         @Override
@@ -143,12 +145,12 @@ public class CassandraRowToPojoConverter<OUT> implements CassandraRowToTypeConve
 
         @Override
         public int getAvailableWithoutFetching() {
-            return consumed ? 0 : 1;
+            return 1;
         }
 
         @Override
         public ListenableFuture<ResultSet> fetchMoreResults() {
-            return null;
+            return Futures.immediateFuture(null);
         }
 
         @Override

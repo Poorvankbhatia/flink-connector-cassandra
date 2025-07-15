@@ -18,8 +18,6 @@
 
 package org.apache.flink.streaming.connectors.cassandra;
 
-import org.apache.flink.annotation.PublicEvolving;
-
 import com.datastax.driver.core.Cluster;
 
 import java.io.Serializable;
@@ -29,7 +27,6 @@ import java.io.Serializable;
  * cluster represents the connection that will be established to Cassandra. Cassandra driver metrics
  * are not integrated with Flink metrics, so they are disabled.
  */
-@PublicEvolving
 public abstract class ClusterBuilder implements Serializable {
 
     public Cluster getCluster() {

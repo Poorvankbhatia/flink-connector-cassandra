@@ -60,7 +60,6 @@ class CollectionFieldMappersTest {
         CollectionFieldMappers.ArrayMapper mapper =
                 new CollectionFieldMappers.ArrayMapper(mockElementMapper);
 
-        // Test null value
         when(mockRow.isNull("field")).thenReturn(true);
         assertThat(mapper.extractFromRow(mockRow, "field")).isNull();
 
@@ -75,7 +74,6 @@ class CollectionFieldMappersTest {
         Object result = mapper.extractFromRow(mockRow, "field");
         assertThat(result).isInstanceOf(GenericArrayData.class);
 
-        // Test convertValue method
         assertThat(mapper.convertValue(null)).isNull();
 
         GenericArrayData converted = (GenericArrayData) mapper.convertValue(testList);
@@ -130,66 +128,18 @@ class CollectionFieldMappersTest {
         when(mockElementMapper.convertValue("z")).thenReturn("converted_z");
 
         Object result = mapper.extractFromRow(mockRow, "field");
-        assertThat(result).isInstanceOf(GenericArrayData.class);
+        assertThat(result).isInstanceOf(GenericMapData.class);
 
         // Test convertValue method
         assertThat(mapper.convertValue(null)).isNull();
 
-        GenericArrayData converted = (GenericArrayData) mapper.convertValue(testSet);
+        GenericMapData converted = (GenericMapData) mapper.convertValue(testSet);
         assertThat(converted.size()).isEqualTo(3);
-        // Note: Set order is not guaranteed, so we check that all converted values are present
-        Object[] array = converted.toObjectArray();
-        assertThat(array).containsExactlyInAnyOrder("converted_x", "converted_y", "converted_z");
-    }
-
-    @Test
-    void testTupleMapper() {
-        CassandraFieldMapper[] fieldMappers = {mockElementMapper, mockValueMapper};
-        CollectionFieldMappers.TupleMapper mapper =
-                new CollectionFieldMappers.TupleMapper(fieldMappers);
-
-        // Test null value
-        when(mockRow.isNull("field")).thenReturn(true);
-        assertThat(mapper.extractFromRow(mockRow, "field")).isNull();
-
-        // Test tuple value
-        when(mockRow.isNull("field")).thenReturn(false);
-        when(mockRow.getObject("field")).thenReturn(mockTupleValue);
-        when(mockTupleValue.isNull(0)).thenReturn(false);
-        when(mockTupleValue.isNull(1)).thenReturn(false);
-        when(mockTupleValue.getObject(0)).thenReturn("tuple_field1");
-        when(mockTupleValue.getObject(1)).thenReturn(42);
-        when(mockElementMapper.convertValue("tuple_field1")).thenReturn("converted_tuple_field1");
-        when(mockValueMapper.convertValue(42)).thenReturn(420);
-
-        Object result = mapper.extractFromRow(mockRow, "field");
-        assertThat(result).isInstanceOf(GenericRowData.class);
-
-        // Test convertValue method
-        assertThat(mapper.convertValue(null)).isNull();
-
-        GenericRowData converted = (GenericRowData) mapper.convertValue(mockTupleValue);
-        assertThat(converted.getArity()).isEqualTo(2);
-        assertThat(converted.getField(0)).isEqualTo("converted_tuple_field1");
-        assertThat(converted.getField(1)).isEqualTo(420);
-    }
-
-    @Test
-    void testTupleMapperWithNullFields() {
-        CassandraFieldMapper[] fieldMappers = {mockElementMapper, mockValueMapper};
-        CollectionFieldMappers.TupleMapper mapper =
-                new CollectionFieldMappers.TupleMapper(fieldMappers);
-
-        // Test tuple with null fields
-        when(mockTupleValue.isNull(0)).thenReturn(true);
-        when(mockTupleValue.isNull(1)).thenReturn(false);
-        when(mockTupleValue.getObject(1)).thenReturn(42);
-        when(mockValueMapper.convertValue(42)).thenReturn(420);
-
-        GenericRowData converted = (GenericRowData) mapper.convertValue(mockTupleValue);
-        assertThat(converted.getArity()).isEqualTo(2);
-        assertThat(converted.isNullAt(0)).isTrue();
-        assertThat(converted.getField(1)).isEqualTo(420);
+        // Note: Set order is not guaranteed, so we check that the converted values are present
+        // Each element should have count 1 in the multiset
+        assertThat(converted.get("converted_x")).isEqualTo(1);
+        assertThat(converted.get("converted_y")).isEqualTo(1);
+        assertThat(converted.get("converted_z")).isEqualTo(1);
     }
 
     @Test
@@ -270,7 +220,41 @@ class CollectionFieldMappersTest {
                 new CollectionFieldMappers.SetMapper(mockElementMapper);
 
         Set<Object> emptySet = new HashSet<>();
-        GenericArrayData converted = (GenericArrayData) mapper.convertValue(emptySet);
+        GenericMapData converted = (GenericMapData) mapper.convertValue(emptySet);
         assertThat(converted.size()).isEqualTo(0);
+    }
+
+    @Test
+    void testSetMapperCountTypeIsInteger() {
+        CollectionFieldMappers.SetMapper mapper =
+                new CollectionFieldMappers.SetMapper(mockElementMapper);
+
+        // Test with integer elements to simulate MULTISET<INT>
+        Set<Object> testSet = new HashSet<>(Arrays.asList(10, 20, 30));
+        when(mockElementMapper.convertValue(10)).thenReturn(10);
+        when(mockElementMapper.convertValue(20)).thenReturn(20);
+        when(mockElementMapper.convertValue(30)).thenReturn(30);
+
+        GenericMapData converted = (GenericMapData) mapper.convertValue(testSet);
+        assertThat(converted.size()).isEqualTo(3);
+
+        // Verify that the count values are specifically Integer objects, not Long
+        // This test ensures the fix for ClassCastException: Long cannot be cast to Integer
+        Object count10 = converted.get(10);
+        Object count20 = converted.get(20);
+        Object count30 = converted.get(30);
+
+        assertThat(count10).isInstanceOf(Integer.class);
+        assertThat(count20).isInstanceOf(Integer.class);
+        assertThat(count30).isInstanceOf(Integer.class);
+
+        assertThat(count10).isEqualTo(1);
+        assertThat(count20).isEqualTo(1);
+        assertThat(count30).isEqualTo(1);
+
+        // Additional check: verify it's not a Long
+        assertThat(count10).isNotInstanceOf(Long.class);
+        assertThat(count20).isNotInstanceOf(Long.class);
+        assertThat(count30).isNotInstanceOf(Long.class);
     }
 }
