@@ -19,6 +19,7 @@
 package org.apache.flink.connector.cassandra.source.reader;
 
 import org.apache.flink.api.connector.source.SourceReaderContext;
+import org.apache.flink.connector.cassandra.source.reader.converter.CassandraRowToTypeConverter;
 import org.apache.flink.streaming.connectors.cassandra.ClusterBuilder;
 import org.apache.flink.streaming.connectors.cassandra.MapperOptions;
 
@@ -29,9 +30,24 @@ import com.datastax.driver.mapping.MappingManager;
 
 /**
  * Factory to create {@link CassandraSourceReader}s and allow sharing the cluster and the session
- * objects.
+ * objects. Now supports strategy-based deserialization.
  */
 public class CassandraSourceReaderFactory<OUT> {
+
+    public CassandraSourceReader<OUT> createWithStrategy(
+            SourceReaderContext context,
+            ClusterBuilder clusterBuilder,
+            CassandraRowToTypeConverter<OUT> rowToTypeConverter,
+            String query,
+            String keyspace,
+            String table) {
+        Cluster cluster = clusterBuilder.getCluster();
+        Session session = cluster.connect();
+        return new CassandraSourceReader<>(
+                context, query, keyspace, table, cluster, session, rowToTypeConverter);
+    }
+
+    @Deprecated
     public CassandraSourceReader<OUT> create(
             SourceReaderContext context,
             ClusterBuilder clusterBuilder,

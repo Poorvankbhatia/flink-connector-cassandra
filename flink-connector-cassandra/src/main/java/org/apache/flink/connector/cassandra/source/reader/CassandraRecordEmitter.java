@@ -20,73 +20,85 @@ package org.apache.flink.connector.cassandra.source.reader;
 
 import org.apache.flink.api.connector.source.SourceOutput;
 import org.apache.flink.connector.base.source.reader.RecordEmitter;
+import org.apache.flink.connector.cassandra.source.reader.converter.CassandraRowToTypeConverter;
 import org.apache.flink.connector.cassandra.source.split.CassandraSplit;
 
 import com.datastax.driver.core.ColumnDefinitions;
 import com.datastax.driver.core.ExecutionInfo;
 import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Row;
-import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
 
-import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.function.Function;
 
+import static java.util.Collections.singletonList;
+
 /**
- * {@link RecordEmitter} that converts the {@link CassandraRow} read by the {@link
- * CassandraSplitReader} to specified POJO and output it. This class uses the Cassandra driver
- * mapper to map the row to the POJO.
+ * {@link RecordEmitter} that uses a mapper function to convert {@link ResultSet} directly to the
+ * desired output type (existing behavior - deprecated).
  *
- * @param <OUT> type of POJO record to output
+ * @param <OUT> type of record to output
+ * @deprecated Use {@link CassandraRowEmitter} with {@link CassandraRowToTypeConverter} instead.
  */
+@Deprecated
 class CassandraRecordEmitter<OUT> implements RecordEmitter<CassandraRow, OUT, CassandraSplit> {
 
-    private final Function<ResultSet, OUT> map;
+    private final Function<ResultSet, OUT> mapper;
 
-    public CassandraRecordEmitter(Function<ResultSet, OUT> map) {
-        this.map = map;
+    public CassandraRecordEmitter(Function<ResultSet, OUT> mapper) {
+        this.mapper = mapper;
     }
 
     @Override
     public void emitRecord(
             CassandraRow cassandraRow, SourceOutput<OUT> output, CassandraSplit cassandraSplit) {
-        // Mapping from a row to a Class<OUT> is a complex operation involving reflection API.
-        // It is better to use Cassandra mapper for it.
-        // But the mapper takes only a resultSet as input hence forging one containing only the Row
-        ResultSet resultSet = new SingleRowResultSet(cassandraRow);
-        // output the pojo based on the cassandraRow
-        output.collect(map.apply(resultSet));
+        // Create fake ResultSet from Row for backward compatibility
+        OUT record = mapper.apply(new SingleRowResultSet(cassandraRow.getRow()));
+        if (record != null) {
+            output.collect(record);
+        }
     }
 
+    /**
+     * A ResultSet implementation that wraps a single Row. This is needed because the old POJO-based
+     * API expects a ResultSet.
+     */
     private static class SingleRowResultSet implements ResultSet {
-        private final CassandraRow cassandraRow;
         private final Row row;
+        private boolean consumed = false;
 
-        private SingleRowResultSet(CassandraRow cassandraRow) {
-            this.cassandraRow = cassandraRow;
-            this.row = cassandraRow.getRow();
+        SingleRowResultSet(Row row) {
+            this.row = row;
         }
 
         @Override
         public Row one() {
-            return row;
+            if (!consumed) {
+                consumed = true;
+                return row;
+            }
+            return null;
         }
 
         @Override
-        public ColumnDefinitions getColumnDefinitions() {
-            return row.getColumnDefinitions();
+        public List<Row> all() {
+            if (!consumed) {
+                consumed = true;
+                return singletonList(row);
+            }
+            return singletonList(null);
         }
 
         @Override
-        public boolean wasApplied() {
-            return true;
+        public Iterator<Row> iterator() {
+            return all().iterator();
         }
 
         @Override
         public boolean isExhausted() {
-            return true;
+            return consumed;
         }
 
         @Override
@@ -96,43 +108,32 @@ class CassandraRecordEmitter<OUT> implements RecordEmitter<CassandraRow, OUT, Ca
 
         @Override
         public int getAvailableWithoutFetching() {
-            return 1;
+            return consumed ? 0 : 1;
         }
 
         @Override
         public ListenableFuture<ResultSet> fetchMoreResults() {
-            return Futures.immediateFuture(null);
-        }
-
-        @Override
-        public List<Row> all() {
-            return Collections.singletonList(row);
-        }
-
-        @Override
-        public Iterator<Row> iterator() {
-            return new Iterator<Row>() {
-
-                @Override
-                public boolean hasNext() {
-                    return true;
-                }
-
-                @Override
-                public Row next() {
-                    return row;
-                }
-            };
+            return null;
         }
 
         @Override
         public ExecutionInfo getExecutionInfo() {
-            return cassandraRow.getExecutionInfo();
+            return null;
         }
 
         @Override
         public List<ExecutionInfo> getAllExecutionInfo() {
-            return Collections.singletonList(cassandraRow.getExecutionInfo());
+            return singletonList(getExecutionInfo());
+        }
+
+        @Override
+        public boolean wasApplied() {
+            return true;
+        }
+
+        @Override
+        public ColumnDefinitions getColumnDefinitions() {
+            return row.getColumnDefinitions();
         }
     }
 }
