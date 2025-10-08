@@ -26,9 +26,10 @@ import org.apache.flink.test.junit5.MiniClusterExtension;
 import org.apache.flink.types.Row;
 import org.apache.flink.util.CloseableIterator;
 
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestInstance;
 import org.junit.jupiter.api.extension.ExtendWith;
 
 import java.math.BigDecimal;
@@ -43,12 +44,13 @@ import static org.assertj.core.api.Assertions.assertThat;
  * complex scenarios, edge cases, and error conditions.
  */
 @ExtendWith(MiniClusterExtension.class)
+@TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class CassandraDynamicTableSourceITCase {
 
     private CassandraTestEnvironment cassandraTestEnvironment;
     private StreamTableEnvironment tableEnv;
 
-    @BeforeEach
+    @BeforeAll
     void setUp() throws Exception {
         cassandraTestEnvironment = new CassandraTestEnvironment(false);
         cassandraTestEnvironment.startUp();
@@ -60,11 +62,9 @@ class CassandraDynamicTableSourceITCase {
         insertAllTestData();
     }
 
-    @AfterEach
+    @AfterAll
     void tearDown() throws Exception {
-        if (cassandraTestEnvironment != null) {
-            cassandraTestEnvironment.tearDown();
-        }
+        cassandraTestEnvironment.tearDown();
     }
 
     private void createAllTestTables() {
@@ -1526,7 +1526,7 @@ class CassandraDynamicTableSourceITCase {
     @Test
     void testFieldProjectionAndQueryOptimization() throws Exception {
         String createFlinkTable =
-                "CREATE TABLE flink_primitives ("
+                "CREATE TABLE flink_projections ("
                         + "  id INT,"
                         + "  name STRING,"
                         + "  age INT,"
@@ -1549,7 +1549,7 @@ class CassandraDynamicTableSourceITCase {
                         + ")";
 
         tableEnv.executeSql(createFlinkTable);
-        Table result = tableEnv.sqlQuery("SELECT name, age FROM flink_primitives");
+        Table result = tableEnv.sqlQuery("SELECT name, age FROM flink_projections");
 
         List<Row> actualRows = collectResults(result, 2);
 
